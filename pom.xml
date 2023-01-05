@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.hoquangnam45.pharmacy.infra</groupId>
+  <artifactId>pharmacy-infra</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <cdk.version>2.59.0</cdk.version>
+    <constructs.version>[10.0.0,11.0.0)</constructs.version>
+    <junit.version>5.7.1</junit.version>
+    <spotless.version>2.28.0</spotless.version>
+  </properties>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.0.0</version>
+        <configuration>
+          <mainClass>com.hoquangnam45.pharmacy.PharmacyApp</mainClass>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.8.1</version>
+        <configuration>
+          <source>17</source>
+          <target>17</target>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>com.rudikershaw.gitbuildhook</groupId>
+        <artifactId>git-build-hook-maven-plugin</artifactId>
+        <version>3.3.0</version>
+        <configuration>
+          <gitConfig>
+            <!-- The location of the directory you are using to store the Git hooks in your project. -->
+            <core.hooksPath>./scripts/hooks</core.hooksPath>
+          </gitConfig>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <!-- Sets git config specified under configuration > gitConfig. -->
+              <goal>configure</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>${spotless.version}</version>
+        <configuration>
+          <formats>
+            <!-- you can define as many formats as you want, each is independent -->
+            <format>
+              <!-- define the files to apply to -->
+              <includes>
+                <include>*.md</include>
+                <include>.gitignore</include>
+              </includes>
+              <excludes>
+                <exclude>target/</exclude>
+                <exclude>bin/</exclude>
+                <exclude>build/</exclude>
+                <exclude>cache/</exclude>
+                <exclude>cdk.out/</exclude>
+              </excludes>
+              <!-- define the steps to apply to those files -->
+              <trimTrailingWhitespace />
+              <endWithNewline />
+              <indent>
+                <spaces>true</spaces>
+                <spacesPerTab>2</spacesPerTab>
+              </indent>
+            </format>
+
+            <format>
+              <includes>
+                <include>**/*.xml</include>
+                <include>**/*.xsd</include>
+              </includes>
+              <excludes>
+                <exclude>target/</exclude>
+                <exclude>bin/</exclude>
+                <exclude>build/</exclude>
+                <exclude>cache/</exclude>
+                <exclude>cdk.out/</exclude>
+              </excludes>
+              <eclipseWtp>
+                <type>XML</type>
+                <files>
+                  <file>spotless.xml.prefs</file>
+                </files>
+              </eclipseWtp>
+            </format>
+            <format>
+              <includes>
+                <include>**/*.json</include>
+              </includes>
+              <excludes>
+                <exclude>target/</exclude>
+                <exclude>bin/</exclude>
+                <exclude>build/</exclude>
+                <exclude>cache/</exclude>
+                <exclude>cdk.out/</exclude>
+              </excludes>
+              <prettier>
+                <config>
+                  <parser>json</parser>
+                </config>
+              </prettier>
+            </format>
+
+            <format>
+              <includes>
+                <include>**/*.yaml</include>
+                <include>**/*.yml</include>
+              </includes>
+              <excludes>
+                <exclude>target/</exclude>
+                <exclude>bin/</exclude>
+                <exclude>build/</exclude>
+                <exclude>cache/</exclude>
+                <exclude>cdk.out/</exclude>
+              </excludes>
+              <prettier>
+                <config>
+                  <parser>yaml</parser>
+                </config>
+              </prettier>
+            </format>
+          </formats>
+
+          <!-- define a language-specific format -->
+          <java>
+            <excludes>
+              <exclude>target/</exclude>
+              <exclude>bin/</exclude>
+              <exclude>build/</exclude>
+              <exclude>cache/</exclude>
+              <exclude>cdk.out/</exclude>
+            </excludes>
+            <!-- no need to specify files, inferred automatically, but you can if you want -->
+            <toggleOffOn />
+            <removeUnusedImports />
+            <eclipse>
+              <file>${basedir}/eclipse-formatter.xml</file>
+            </eclipse>
+            <formatAnnotations />
+          </java>
+        </configuration>
+      </plugin>
+
+    </plugins>
+  </build>
+
+  <dependencies>
+    <!-- AWS Cloud Development Kit -->
+    <dependency>
+      <groupId>software.amazon.awscdk</groupId>
+      <artifactId>aws-cdk-lib</artifactId>
+      <version>${cdk.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <version>1.18.24</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>software.constructs</groupId>
+      <artifactId>constructs</artifactId>
+      <version>${constructs.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awscdk</groupId>
+      <artifactId>apigatewayv2-alpha</artifactId>
+      <version>${cdk.version}-alpha.0</version>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awscdk</groupId>
+      <artifactId>apigatewayv2-integrations-alpha</artifactId>
+      <version>${cdk.version}-alpha.0</version>
+    </dependency>
+  </dependencies>
+</project>

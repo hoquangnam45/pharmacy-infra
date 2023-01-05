@@ -1,0 +1,29 @@
+name: "Setup deployment"
+description: "Setup deployment"
+inputs:
+  aws-access-key-id:
+    required: true
+    description: aws-access-key-id
+  aws-secret-access-key:
+    required: true
+    description: aws-secret-access-key
+  aws-region:
+    required: true
+    description: aws-access-key-id
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@v3
+      with:
+        distribution: "corretto"
+        java-version: "17"
+    - uses: actions/setup-node@v3
+      with:
+        node-version: "18"
+    - uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ inputs.aws-access-key-id }}
+        aws-secret-access-key: ${{ inputs.aws-secret-access-key }}
+        aws-region: ${{ inputs.aws-region }}
+    - shell: bash
+      run: npx cdk --version
