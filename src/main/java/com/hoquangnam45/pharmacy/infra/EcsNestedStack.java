@@ -158,6 +158,7 @@ public class EcsNestedStack extends NestedStack {
         .build();
     UserData userData = UserData.forLinux();
     userData.addCommands(userDataContent);
+    userData.addCommands("echo ECS_ENABLE_CONTAINER_METADATA=true >> /etc/ecs/ecs.config");
     return LaunchTemplate.Builder.create(this, id)
         .machineImage(EcsOptimizedImage.amazonLinux2())
         .role(role)

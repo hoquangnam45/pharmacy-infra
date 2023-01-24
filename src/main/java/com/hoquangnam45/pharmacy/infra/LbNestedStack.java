@@ -24,7 +24,7 @@ public class LbNestedStack extends NestedStack {
     super(scope, id, props);
     IVpc vpc = props.getVpc();
     this.sg = createLoadBalancerSecurityGroup(LB + "Sg", vpc);
-    this.lb = createInternalLoadBalancer(LB, vpc, sg, props.getSelectedSubnets());
+    this.lb = createLoadBalancer(LB, vpc, sg, props.getSelectedSubnets());
   }
 
   private ISecurityGroup createLoadBalancerSecurityGroup(String id, IVpc vpc) {
@@ -33,12 +33,12 @@ public class LbNestedStack extends NestedStack {
         .build();
   }
 
-  private IApplicationLoadBalancer createInternalLoadBalancer(String id, IVpc vpc,
+  private IApplicationLoadBalancer createLoadBalancer(String id, IVpc vpc,
       ISecurityGroup securityGroup, SelectedSubnets selectedSubnets) {
     return ApplicationLoadBalancer.Builder.create(this, id)
         .securityGroup(securityGroup)
         .vpc(vpc)
-        .internetFacing(false)
+        .internetFacing(true)
         .vpcSubnets(SubnetSelection.builder().subnets(selectedSubnets.getSubnets()).build())
         .build();
   }

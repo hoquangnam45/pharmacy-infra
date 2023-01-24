@@ -15,6 +15,45 @@
     <spotless.version>2.28.0</spotless.version>
   </properties>
 
+  <dependencies>
+    <!-- AWS Cloud Development Kit -->
+    <dependency>
+      <groupId>software.amazon.awscdk</groupId>
+      <artifactId>aws-cdk-lib</artifactId>
+      <version>${cdk.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <version>1.18.24</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>software.constructs</groupId>
+      <artifactId>constructs</artifactId>
+      <version>${constructs.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awscdk</groupId>
+      <artifactId>apigatewayv2-alpha</artifactId>
+      <version>${cdk.version}-alpha.0</version>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awscdk</groupId>
+      <artifactId>apigatewayv2-integrations-alpha</artifactId>
+      <version>${cdk.version}-alpha.0</version>
+    </dependency>
+  </dependencies>
+
   <build>
     <plugins>
       <plugin>
@@ -161,46 +200,6 @@
           </java>
         </configuration>
       </plugin>
-
     </plugins>
   </build>
-
-  <dependencies>
-    <!-- AWS Cloud Development Kit -->
-    <dependency>
-      <groupId>software.amazon.awscdk</groupId>
-      <artifactId>aws-cdk-lib</artifactId>
-      <version>${cdk.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>org.projectlombok</groupId>
-      <artifactId>lombok</artifactId>
-      <version>1.18.24</version>
-      <scope>provided</scope>
-    </dependency>
-
-    <dependency>
-      <groupId>software.constructs</groupId>
-      <artifactId>constructs</artifactId>
-      <version>${constructs.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter</artifactId>
-      <version>${junit.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>software.amazon.awscdk</groupId>
-      <artifactId>apigatewayv2-alpha</artifactId>
-      <version>${cdk.version}-alpha.0</version>
-    </dependency>
-    <dependency>
-      <groupId>software.amazon.awscdk</groupId>
-      <artifactId>apigatewayv2-integrations-alpha</artifactId>
-      <version>${cdk.version}-alpha.0</version>
-    </dependency>
-  </dependencies>
 </project>

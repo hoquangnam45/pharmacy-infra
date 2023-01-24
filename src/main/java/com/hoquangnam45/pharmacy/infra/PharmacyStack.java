@@ -1,9 +1,12 @@
 package com.hoquangnam45.pharmacy.infra;
 
-import com.hoquangnam45.pharmacy.infra.ApiGatewayNestedStack.ApiGatewayNestedStackProps;
 import com.hoquangnam45.pharmacy.infra.EcsNestedStack.EcsNestedStackProps;
+import com.hoquangnam45.pharmacy.infra.LbNestedStack.LbNestedStackProps;
 import com.hoquangnam45.pharmacy.infra.MqNestedStack.MqNestedStackProps;
-import com.hoquangnam45.pharmacy.infra.CfNestedStack.CfNestedStackProps;
+
+import java.util.List;
+
+import com.hoquangnam45.pharmacy.infra.BucketNestedStack.BucketNestedStackProps;
 import com.hoquangnam45.pharmacy.infra.DbNestedStack.DbNestedStackProps;
 import com.hoquangnam45.pharmacy.infra.VpcNestedStack.VpcNestedStackProps;
 import com.hoquangnam45.pharmacy.util.Environments;
@@ -14,6 +17,10 @@ import software.amazon.awscdk.SecretValue;
 import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.StackProps;
 import software.amazon.awscdk.services.amazonmq.CfnBroker.UserProperty;
+import software.amazon.awscdk.services.ec2.Peer;
+import software.amazon.awscdk.services.ec2.Port;
+import software.amazon.awscdk.services.iam.AnyPrincipal;
+import software.amazon.awscdk.services.iam.PolicyStatement;
 import software.amazon.awscdk.services.rds.Credentials;
 import software.amazon.awscdk.services.ssm.StringParameter;
 import software.constructs.Construct;
@@ -29,38 +36,30 @@ public class PharmacyStack extends Stack {
             .dataSubnetName("Data")
             .build());
 
-    BucketNestedStack bucketStackDev = new BucketNestedStack(this, "S3StackDev", null);
-    BucketNestedStack bucketStackProd = new BucketNestedStack(this, "S3StackProd", null);
+    PolicyStatement policyStatement = PolicyStatement.Builder.create()
+        .actions(List.of("s3:GetObject"))
+        .principals(List.of(new AnyPrincipal()))
+        .resources(List.of("*"))
+        .build();
+    BucketNestedStack bucketStackDev = new BucketNestedStack(this, "S3StackDev", BucketNestedStackProps.builder()
+        .policyStatement(policyStatement)
+        .build());
+    BucketNestedStack bucketStackProd = new BucketNestedStack(this, "S3StackProd", BucketNestedStackProps.builder()
+        .policyStatement(policyStatement)
+        .build());
 
-    ApiGatewayNestedStack apiGwStackDev = new ApiGatewayNestedStack(this, "ApiGwStackDev",
-        ApiGatewayNestedStackProps.builder()
-            .vpc(vpcStack.getVpc())
-            .selectedSubnets(vpcStack.getAppSubnets())
-            .build());
-    ApiGatewayNestedStack apiGwStackProd = new ApiGatewayNestedStack(this, "ApiGwStackProd",
-        ApiGatewayNestedStackProps.builder()
-            .vpc(vpcStack.getVpc())
-            .selectedSubnets(vpcStack.getAppSubnets())
-            .build());
+    LbNestedStack lbStack = new LbNestedStack(this, "LbStack", LbNestedStackProps.builder()
+        .vpc(vpcStack.getVpc())
+        .selectedSubnets(vpcStack.getAppSubnets())
+        .build());
 
     EcsNestedStack ecsStack = new EcsNestedStack(this, "EcsStack",
         EcsNestedStackProps.builder()
             .vpc(vpcStack.getVpc())
-            .launchTemplateUserData("echo ECS_ENABLE_CONTAINER_METADATA=true >> /etc/ecs/ecs.config")
+            .launchTemplateUserData("")
             .keypairName("pharmacy-ssh-keypair")
             .selectedSubnets(vpcStack.getAppSubnets())
             .clusterName("pharmacy-cluster")
-            .build());
-
-    CfNestedStack cfStackDev = new CfNestedStack(this, "CfStackDev",
-        CfNestedStackProps.builder()
-            .bucket(bucketStackDev.getBucket())
-            .httpApi(apiGwStackDev.getHttpApi())
-            .build());
-    CfNestedStack cfStackProd = new CfNestedStack(this, "CfStackProd",
-        CfNestedStackProps.builder()
-            .bucket(bucketStackProd.getBucket())
-            .httpApi(apiGwStackProd.getHttpApi())
             .build());
 
     String dbUsername = StringParameter.fromStringParameterName(this, "DbUsername", "DB_USERNAME").getStringValue();
@@ -72,7 +71,7 @@ public class PharmacyStack extends Stack {
 
     String mqUsername = StringParameter.fromStringParameterName(this, "MqUsername", "MQ_USERNAME").getStringValue();
     String mqPassword = StringParameter.fromStringParameterName(this, "MqPassword", "MQ_PASSWORD").getStringValue();
-    ;
+
     MqNestedStack mqStack = new MqNestedStack(this, "MqStack", MqNestedStackProps.builder()
         .vpc(vpcStack.getVpc())
         .selectedSubnets(vpcStack.getDataSubnets())
@@ -82,8 +81,10 @@ public class PharmacyStack extends Stack {
             .build())
         .build());
 
-    Environments.connect(apiGwStackDev.getVpcLinkSg(), ecsStack.getSg());
-    Environments.connect(apiGwStackProd.getVpcLinkSg(), ecsStack.getSg());
+    lbStack.getSg().addIngressRule(Peer.anyIpv4(), Port.tcp(80));
+    lbStack.getSg().addIngressRule(Peer.anyIpv6(), Port.tcp(80));
+
+    Environments.connect(lbStack.getSg(), ecsStack.getSg());
     Environments.connect(ecsStack.getSg(), dbStack.getSg());
     Environments.connect(ecsStack.getSg(), ecsStack.getSg());
     Environments.connect(ecsStack.getSg(), mqStack.getSg());
@@ -120,30 +121,6 @@ public class PharmacyStack extends Stack {
     CfnOutput.Builder.create(this, "VpcId")
         .exportName(Environments.getOutputExportName(stackId, "VpcId"))
         .value(vpcStack.getVpc().getVpcId())
-        .build();
-    CfnOutput.Builder.create(this, "ApiGwDevId")
-        .exportName(Environments.getOutputExportName(stackId, "ApiGwDevId"))
-        .value(apiGwStackDev.getHttpApi().getApiId())
-        .build();
-    CfnOutput.Builder.create(this, "ApiGwProdId")
-        .exportName(Environments.getOutputExportName(stackId, "ApiGwProdId"))
-        .value(apiGwStackProd.getHttpApi().getApiId())
-        .build();
-    CfnOutput.Builder.create(this, "VpcLinkDevId")
-        .exportName(Environments.getOutputExportName(stackId, "VpcLinkDevId"))
-        .value(apiGwStackDev.getVpcLink().getVpcLinkId())
-        .build();
-    CfnOutput.Builder.create(this, "VpcLinkProdId")
-        .exportName(Environments.getOutputExportName(stackId, "VpcLinkProdId"))
-        .value(apiGwStackProd.getVpcLink().getVpcLinkId())
-        .build();
-    CfnOutput.Builder.create(this, "CfDistributionIdDev")
-        .exportName(Environments.getOutputExportName(stackId, "CfDistributionIdDev"))
-        .value(cfStackDev.getDistributionId())
-        .build();
-    CfnOutput.Builder.create(this, "CfDistributionIdProd")
-        .exportName(Environments.getOutputExportName(stackId, "CfDistributionIdProd"))
-        .value(cfStackProd.getDistributionId())
         .build();
   }
 }
