@@ -1,10 +1,10 @@
 package com.hoquangnam45.pharmacy.deployment;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-import com.hoquangnam45.pharmacy.constant.EnvironmentE;
 import com.hoquangnam45.pharmacy.util.Environments;
 
 import lombok.AllArgsConstructor;
@@ -13,8 +13,6 @@ import software.amazon.awscdk.Environment;
 import software.amazon.awscdk.Fn;
 import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.StackProps;
-import software.amazon.awscdk.services.apigatewayv2.alpha.HttpApi;
-import software.amazon.awscdk.services.apigatewayv2.alpha.HttpApiAttributes;
 import software.amazon.awscdk.services.apigatewayv2.alpha.HttpMethod;
 import software.amazon.awscdk.services.apigatewayv2.alpha.HttpRoute;
 import software.amazon.awscdk.services.apigatewayv2.alpha.HttpRouteKey;
@@ -22,12 +20,14 @@ import software.amazon.awscdk.services.apigatewayv2.alpha.IHttpApi;
 import software.amazon.awscdk.services.apigatewayv2.alpha.IVpcLink;
 import software.amazon.awscdk.services.apigatewayv2.alpha.MappingValue;
 import software.amazon.awscdk.services.apigatewayv2.alpha.ParameterMapping;
-import software.amazon.awscdk.services.apigatewayv2.alpha.VpcLink;
-import software.amazon.awscdk.services.apigatewayv2.alpha.VpcLinkAttributes;
 import software.amazon.awscdk.services.apigatewayv2.integrations.alpha.HttpServiceDiscoveryIntegration;
+import software.amazon.awscdk.services.ec2.ISecurityGroup;
 import software.amazon.awscdk.services.ec2.IVpc;
+import software.amazon.awscdk.services.ec2.SecurityGroup;
+import software.amazon.awscdk.services.ec2.SubnetFilter;
+import software.amazon.awscdk.services.ec2.SubnetSelection;
 import software.amazon.awscdk.services.ec2.Vpc;
-import software.amazon.awscdk.services.ec2.VpcAttributes;
+import software.amazon.awscdk.services.ec2.VpcLookupOptions;
 import software.amazon.awscdk.services.ecs.AppProtocol;
 import software.amazon.awscdk.services.ecs.AssociateCloudMapServiceOptions;
 import software.amazon.awscdk.services.ecs.AwsLogDriverProps;
@@ -42,6 +42,7 @@ import software.amazon.awscdk.services.ecs.Ec2Service;
 import software.amazon.awscdk.services.ecs.HealthCheck;
 import software.amazon.awscdk.services.ecs.ICluster;
 import software.amazon.awscdk.services.ecs.LogDriver;
+import software.amazon.awscdk.services.ecs.NetworkMode;
 import software.amazon.awscdk.services.ecs.PortMapping;
 import software.amazon.awscdk.services.ecs.RepositoryImageProps;
 import software.amazon.awscdk.services.ecs.TaskDefinition;
@@ -51,6 +52,7 @@ import software.amazon.awscdk.services.servicediscovery.DnsRecordType;
 import software.amazon.awscdk.services.servicediscovery.IPrivateDnsNamespace;
 import software.amazon.awscdk.services.servicediscovery.PrivateDnsNamespace;
 import software.amazon.awscdk.services.servicediscovery.PrivateDnsNamespaceAttributes;
+import software.amazon.awscdk.services.servicediscovery.RoutingPolicy;
 import software.amazon.awscdk.services.servicediscovery.Service;
 import software.constructs.Construct;
 
@@ -59,10 +61,7 @@ public class EcsServiceDeploymentStack extends Stack {
     super(scope, id, props);
 
     String stackId = props.getOutputStack();
-    IVpc vpc = Vpc.fromVpcAttributes(this, "Vpc", VpcAttributes.builder()
-        .vpcId(Fn.importValue(Environments.getOutputExportName(stackId, "VpcId")))
-        .availabilityZones(getAvailabilityZones())
-        .build());
+    IVpc vpc = Vpc.fromLookup(this, "Vpc", VpcLookupOptions.builder().vpcName(props.getVpcName()).build());
     ICluster cluster = Cluster.fromClusterAttributes(this, "Cluster", ClusterAttributes.builder()
         .clusterName(Fn.importValue(Environments.getOutputExportName(stackId, "ClusterName")))
         .securityGroups(new ArrayList<>())
@@ -74,56 +73,119 @@ public class EcsServiceDeploymentStack extends Stack {
             .namespaceId(Fn.importValue(Environments.getOutputExportName(stackId, "ClusterNamespaceId")))
             .namespaceName(Fn.importValue(Environments.getOutputExportName(stackId, "ClusterNamespaceName")))
             .build());
+    SubnetSelection ecsSubnetSelection = null;
+    ISecurityGroup ecsServiceSg = null;
+    if (props.getIsBootstrap()) {
+      ecsServiceSg = SecurityGroup.fromSecurityGroupId(this, "AppSg",
+          Fn.importValue(Environments.getOutputExportName(stackId, "AppSg")));
+      List<String> appSubnetIds = Fn.split(",",
+          Fn.importValue(Environments.getOutputExportName(stackId, "AppSubnetIds")), 3);
+      ecsSubnetSelection = SubnetSelection.builder()
+          .availabilityZones(vpc.getAvailabilityZones())
+          .subnetFilters(List.of(SubnetFilter.byIds(appSubnetIds)))
+          .subnets(vpc.getPublicSubnets())
+          .build();
+    }
 
     TaskDefinition td = createTaskDefinition("Td",
         props.getServiceName(),
         props.getFamily(),
         props.getImageName(),
         props.getContainerName(),
-        props.getContainerPort(),
-        props.getHostPort(),
+        toPortMappings(props.getPortMappings()),
         props.getHealthCheckCommand(),
         Environments.collect(props.getExportedEnvironments()),
         props.getMemoryReservationMiB(),
-        getSecret("Secret", props.getRegistryCredentialSecret()));
+        getSecret("Secret", props.getRegistryCredentialSecret()),
+        props.getIsBootstrap());
 
-    Ec2Service service = createService(
+    createService(
         "Service",
         cluster,
         td,
         Fn.importValue(Environments.getOutputExportName(stackId, "ClusterCapacityProviderName")),
         props.getServiceName(),
-        namespace);
+        namespace,
+        ecsServiceSg,
+        ecsSubnetSelection,
+        props.getIsBootstrap());
     if (props.getIsPublic()) {
-      EnvironmentE environment = EnvironmentE.fromValue(props.getEnvironment());
-      IVpcLink vpcLink = null;
-      IHttpApi httpApi = null;
-      switch (environment) {
-        case DEV:
-          vpcLink = VpcLink.fromVpcLinkAttributes(this, "VpcLink", VpcLinkAttributes.builder()
-              .vpc(vpc)
-              .vpcLinkId(Fn.importValue(Environments.getOutputExportName(stackId, "VpcLinkDevId")))
-              .build());
-          httpApi = HttpApi.fromHttpApiAttributes(this, "HttpApi", HttpApiAttributes.builder()
-              .httpApiId(Fn.importValue(Environments.getOutputExportName(stackId, "ApiGwDevId")))
-              .build());
-          break;
-        case PROD:
-          vpcLink = VpcLink.fromVpcLinkAttributes(this, "VpcLink", VpcLinkAttributes.builder()
-              .vpc(vpc)
-              .vpcLinkId(Fn.importValue(Environments.getOutputExportName(stackId, "VpcLinkProdId")))
-              .build());
-          httpApi = HttpApi.fromHttpApiAttributes(this, "HttpApi", HttpApiAttributes.builder()
-              .httpApiId(Fn.importValue(Environments.getOutputExportName(stackId, "ApiGwProdId")))
-              .build());
-          break;
-        default:
-          throw new UnsupportedOperationException();
-      }
-      integrateWithApiGw("ApiGwIntegration", httpApi, vpcLink, service, props.getApiGwConnectProps().getRouteKey());
+      // TODO: Find another approach
+      // EnvironmentE environment = EnvironmentE.fromValue(props.getEnvironment());
+      // IVpcLink vpcLink = null;
+      // IHttpApi httpApi = null;
+      // switch (environment) {
+      // case DEV:
+      // vpcLink = VpcLink.fromVpcLinkAttributes(this, "VpcLink",
+      // VpcLinkAttributes.builder()
+      // .vpc(vpc)
+      // .vpcLinkId(Fn.importValue(Environments.getOutputExportName(stackId,
+      // "VpcLinkDevId")))
+      // .build());
+      // httpApi = HttpApi.fromHttpApiAttributes(this, "HttpApi",
+      // HttpApiAttributes.builder()
+      // .httpApiId(Fn.importValue(Environments.getOutputExportName(stackId,
+      // "ApiGwDevId")))
+      // .build());
+      // break;
+      // case PROD:
+      // vpcLink = VpcLink.fromVpcLinkAttributes(this, "VpcLink",
+      // VpcLinkAttributes.builder()
+      // .vpc(vpc)
+      // .vpcLinkId(Fn.importValue(Environments.getOutputExportName(stackId,
+      // "VpcLinkProdId")))
+      // .build());
+      // httpApi = HttpApi.fromHttpApiAttributes(this, "HttpApi",
+      // HttpApiAttributes.builder()
+      // .httpApiId(Fn.importValue(Environments.getOutputExportName(stackId,
+      // "ApiGwProdId")))
+      // .build());
+      // break;
+      // default:
+      // throw new UnsupportedOperationException();
+      // }
+      // integrateWithApiGw("ApiGwIntegration", httpApi, vpcLink, service,
+      // props.getRouteKey());
     }
   }
 
+  private List<PortMapping> toPortMappings(String portMappingsStr) {
+    String[] parts = portMappingsStr.trim().split(",");
+    List<PortMapping> ports = new ArrayList<>();
+    for (String portMappingStr : parts) {
+      String[] portParts = portMappingStr.trim().split(":", 4);
+      Integer hostPort = Integer.valueOf(portParts[0]);
+      Integer containerPort = Integer.valueOf(portParts[1]);
+      String name = null;
+      AppProtocol appProtocol = null;
+      if (portParts.length > 2) {
+        name = portParts[2];
+        switch (portParts[3].toLowerCase()) {
+          case "http":
+            appProtocol = AppProtocol.getHttp();
+            break;
+          case "http2":
+            appProtocol = AppProtocol.getHttp2();
+            break;
+          case "grpc":
+            appProtocol = AppProtocol.getGrpc();
+            break;
+          default:
+            break;
+        }
+      }
+      PortMapping portMapping = PortMapping.builder()
+          .containerPort(containerPort)
+          .hostPort(hostPort)
+          .name(name)
+          .appProtocol(appProtocol)
+          .build();
+      ports.add(portMapping);
+    }
+    return Collections.unmodifiableList(ports);
+  }
+
+  // TODO: Use another approach with cheaper cost
   private void integrateWithApiGw(
       String id,
       IHttpApi httpApi,
@@ -149,7 +211,10 @@ public class EcsServiceDeploymentStack extends Stack {
       TaskDefinition td,
       String capacityProviderName,
       String serviceName,
-      IPrivateDnsNamespace namespace) {
+      IPrivateDnsNamespace namespace,
+      ISecurityGroup sg,
+      SubnetSelection subnetSelection,
+      Boolean bootstrap) {
     CapacityProviderStrategy defaultStrategy = CapacityProviderStrategy.builder()
         .capacityProvider(capacityProviderName)
         .weight(100)
@@ -159,15 +224,20 @@ public class EcsServiceDeploymentStack extends Stack {
         .cluster(cluster)
         .serviceName(serviceName)
         .taskDefinition(td)
+        .assignPublicIp(false)
+        .securityGroups(bootstrap ? List.of(sg) : null)
+        .vpcSubnets(bootstrap ? subnetSelection : null)
         .build();
+    DnsRecordType dnsRecordType = bootstrap ? DnsRecordType.A : DnsRecordType.SRV;
     Service discoveryService = Service.Builder.create(this, "DiscoveryService")
         .namespace(namespace)
-        .dnsRecordType(DnsRecordType.SRV)
+        .dnsRecordType(dnsRecordType)
         .name(serviceName)
+        .routingPolicy(RoutingPolicy.MULTIVALUE)
         .build();
     ec2Service.associateCloudMapService(AssociateCloudMapServiceOptions.builder()
-        .container(td.getDefaultContainer())
-        .containerPort(td.getDefaultContainer().getContainerPort())
+        .container(dnsRecordType == DnsRecordType.SRV ? td.getDefaultContainer() : null)
+        .containerPort(dnsRecordType == DnsRecordType.SRV ? td.getDefaultContainer().getContainerPort() : null)
         .service(discoveryService)
         .build());
     return ec2Service;
@@ -179,32 +249,28 @@ public class EcsServiceDeploymentStack extends Stack {
       String family,
       String imageName,
       String containerName,
-      Integer containerPort,
-      Integer hostPort,
+      List<PortMapping> portMappings,
       String healthCheckCommand,
       Map<String, String> environments,
       Integer memoryReservationMib,
-      ISecret registryCredential) {
+      ISecret registryCredential,
+      Boolean bootstrap) {
+    NetworkMode networkMode = bootstrap ? NetworkMode.AWS_VPC : NetworkMode.BRIDGE;
     TaskDefinition td = TaskDefinition.Builder.create(this, id)
         .compatibility(Compatibility.EC2)
         .family(family)
+        .networkMode(networkMode)
         .build();
     ContainerImage image = ContainerImage.fromRegistry(imageName,
         RepositoryImageProps.builder()
             .credentials(registryCredential)
             .build());
-    PortMapping portMapping = PortMapping.builder()
-        .containerPort(containerPort)
-        .hostPort(hostPort)
-        .name(containerName)
-        .appProtocol(AppProtocol.getHttp())
-        .build();
     HealthCheck healthCheck = HealthCheck.builder().command(List.of(healthCheckCommand)).build();
     td.addContainer(id + "Container", ContainerDefinitionOptions.builder()
         .environment(environments)
         .image(image)
         .memoryReservationMiB(memoryReservationMib)
-        .portMappings(List.of(portMapping))
+        .portMappings(portMappings)
         .containerName(containerName)
         .logging(LogDriver.awsLogs(
             AwsLogDriverProps.builder()
@@ -232,21 +298,15 @@ public class EcsServiceDeploymentStack extends Stack {
     private final String imageName;
     private final String registryCredentialSecret;
     private final Integer memoryReservationMiB;
-    private final Integer containerPort;
-    private final Integer hostPort;
+    private final String portMappings;
     private final String serviceName;
     private final Boolean isPublic;
-    private final ApiGwConnectProps apiGwConnectProps;
     private final String outputStack;
     private final String environment;
     private final String healthCheckCommand;
     private final Environment env;
-  }
-
-  @lombok.Builder
-  @AllArgsConstructor
-  @Getter
-  public static final class ApiGwConnectProps {
+    private final Boolean isBootstrap;
     private final String routeKey;
+    private final String vpcName;
   }
 }

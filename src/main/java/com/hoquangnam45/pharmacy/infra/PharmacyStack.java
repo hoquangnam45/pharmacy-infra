@@ -11,8 +11,10 @@ import com.hoquangnam45.pharmacy.infra.DbNestedStack.DbNestedStackProps;
 import com.hoquangnam45.pharmacy.infra.VpcNestedStack.VpcNestedStackProps;
 import com.hoquangnam45.pharmacy.util.Environments;
 
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 import software.amazon.awscdk.CfnOutput;
+import software.amazon.awscdk.Environment;
 import software.amazon.awscdk.SecretValue;
 import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.StackProps;
@@ -27,13 +29,14 @@ import software.constructs.Construct;
 
 @Getter
 public class PharmacyStack extends Stack {
-  public PharmacyStack(final Construct scope, final String id, final StackProps props) {
+  public PharmacyStack(final Construct scope, final String id, final PharmacyStackProps props) {
     super(scope, id, props);
 
     VpcNestedStack vpcStack = new VpcNestedStack(this, "VpcStack",
         VpcNestedStackProps.builder()
             .appSubnetName("App")
             .dataSubnetName("Data")
+            .vpcName(props.getVpcName())
             .build());
 
     PolicyStatement policyStatement = PolicyStatement.Builder.create()
@@ -118,9 +121,25 @@ public class PharmacyStack extends Stack {
         .exportName(Environments.getOutputExportName(stackId, "ClusterNamespaceId"))
         .value(ecsStack.getNamespace().getNamespaceId())
         .build();
-    CfnOutput.Builder.create(this, "VpcId")
-        .exportName(Environments.getOutputExportName(stackId, "VpcId"))
-        .value(vpcStack.getVpc().getVpcId())
+    CfnOutput.Builder.create(this, "AppSg")
+        .exportName(Environments.getOutputExportName(stackId, "AppSg"))
+        .value(ecsStack.getSg().getSecurityGroupId())
         .build();
+    String appSubnets = vpcStack.getAppSubnets().getSubnetIds().stream().reduce("", (acc, val) -> {
+      return acc + val + ",";
+    });
+    appSubnets = appSubnets.substring(0, appSubnets.length() - 1);
+    CfnOutput.Builder.create(this, "AppSubnetIds")
+        .exportName(Environments.getOutputExportName(stackId, "AppSubnetIds"))
+        .value(appSubnets)
+        .build();
+  }
+
+  @lombok.Builder
+  @AllArgsConstructor
+  @Getter
+  public static final class PharmacyStackProps implements StackProps {
+    private final Environment env;
+    private final String vpcName;
   }
 }

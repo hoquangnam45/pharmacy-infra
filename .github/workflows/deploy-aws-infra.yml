@@ -43,4 +43,4 @@ jobs:
         run: ./mvnw -Dmaven.repo.local=$MVN_CACHE_FOLDER dependency:go-offline dependency:tree test -DskipTests -U
       - run: ./mvnw -Dmaven.repo.local=$MVN_CACHE_FOLDER spotless:check -o
       - run: ./mvnw -Dmaven.repo.local=$MVN_CACHE_FOLDER test -o
-      - run: npx cdk deploy --app "./mvnw -Dmaven.repo.local=$MVN_CACHE_FOLDER -e -q compile exec:java" --require-approval never
+      - run: npx cdk deploy --app "./mvnw -Dmaven.repo.local=$MVN_CACHE_FOLDER -e -q clean compile exec:java" --require-approval never

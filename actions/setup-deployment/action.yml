@@ -26,4 +26,6 @@ runs:
         aws-secret-access-key: ${{ inputs.aws-secret-access-key }}
         aws-region: ${{ inputs.aws-region }}
     - shell: bash
+      run: aws sts get-caller-identity
+    - shell: bash
       run: npx cdk --version

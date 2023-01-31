@@ -23,7 +23,7 @@ public class VpcNestedStack extends NestedStack {
   public VpcNestedStack(final Construct scope, final String id, final VpcNestedStackProps props) {
     super(scope, id, props);
 
-    this.vpc = createVpc("Vpc", props.getAppSubnetName(), props.getDataSubnetName());
+    this.vpc = createVpc("Vpc", props.getAppSubnetName(), props.getDataSubnetName(), props.getVpcName());
     this.appSubnets = vpc.selectSubnets(SubnetSelection.builder()
         .subnetGroupName(props.getAppSubnetName())
         .build());
@@ -32,7 +32,7 @@ public class VpcNestedStack extends NestedStack {
         .build());
   }
 
-  private IVpc createVpc(String id, String appSubnetName, String dataSubnetName) {
+  private IVpc createVpc(String id, String appSubnetName, String dataSubnetName, String vpcName) {
     SubnetConfiguration appSubnetConfiguration = SubnetConfiguration.builder()
         .cidrMask(28)
         .subnetType(SubnetType.PUBLIC)
@@ -49,6 +49,7 @@ public class VpcNestedStack extends NestedStack {
         .enableDnsHostnames(true)
         .enableDnsSupport(true)
         .subnetConfiguration(subnets)
+        .vpcName(vpcName)
         .maxAzs(3)
         .build();
   }
@@ -59,5 +60,6 @@ public class VpcNestedStack extends NestedStack {
   public static final class VpcNestedStackProps implements NestedStackProps {
     private final String appSubnetName;
     private final String dataSubnetName;
+    private final String vpcName;
   }
 }
