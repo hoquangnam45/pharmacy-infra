@@ -19,8 +19,6 @@ import software.amazon.awscdk.SecretValue;
 import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.StackProps;
 import software.amazon.awscdk.services.amazonmq.CfnBroker.UserProperty;
-import software.amazon.awscdk.services.ec2.Peer;
-import software.amazon.awscdk.services.ec2.Port;
 import software.amazon.awscdk.services.iam.AnyPrincipal;
 import software.amazon.awscdk.services.iam.PolicyStatement;
 import software.amazon.awscdk.services.rds.Credentials;
@@ -84,9 +82,6 @@ public class PharmacyStack extends Stack {
             .build())
         .build());
 
-    lbStack.getSg().addIngressRule(Peer.anyIpv4(), Port.tcp(80));
-    lbStack.getSg().addIngressRule(Peer.anyIpv6(), Port.tcp(80));
-
     Environments.connect(lbStack.getSg(), ecsStack.getSg());
     Environments.connect(ecsStack.getSg(), dbStack.getSg());
     Environments.connect(ecsStack.getSg(), ecsStack.getSg());
@@ -121,17 +116,17 @@ public class PharmacyStack extends Stack {
         .exportName(Environments.getOutputExportName(stackId, "ClusterNamespaceId"))
         .value(ecsStack.getNamespace().getNamespaceId())
         .build();
+    CfnOutput.Builder.create(this, "LoadBalancerArn")
+        .exportName(Environments.getOutputExportName(stackId, "LoadBalancerArn"))
+        .value(lbStack.getLb().getLoadBalancerArn())
+        .build();
+    CfnOutput.Builder.create(this, "LoadBalancerSg")
+        .exportName(Environments.getOutputExportName(stackId, "LoadBalancerSg"))
+        .value(lbStack.getSg().getSecurityGroupId())
+        .build();
     CfnOutput.Builder.create(this, "AppSg")
         .exportName(Environments.getOutputExportName(stackId, "AppSg"))
         .value(ecsStack.getSg().getSecurityGroupId())
-        .build();
-    String appSubnets = vpcStack.getAppSubnets().getSubnetIds().stream().reduce("", (acc, val) -> {
-      return acc + val + ",";
-    });
-    appSubnets = appSubnets.substring(0, appSubnets.length() - 1);
-    CfnOutput.Builder.create(this, "AppSubnetIds")
-        .exportName(Environments.getOutputExportName(stackId, "AppSubnetIds"))
-        .value(appSubnets)
         .build();
   }
 

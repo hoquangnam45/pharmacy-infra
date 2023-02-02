@@ -15,7 +15,13 @@ import software.amazon.awscdk.services.autoscaling.Monitoring;
 import software.amazon.awscdk.services.autoscaling.OnDemandAllocationStrategy;
 import software.amazon.awscdk.services.autoscaling.SpotAllocationStrategy;
 import software.amazon.awscdk.services.autoscaling.UpdatePolicy;
+import software.amazon.awscdk.services.ec2.AmazonLinuxEdition;
+import software.amazon.awscdk.services.ec2.AmazonLinuxGeneration;
+import software.amazon.awscdk.services.ec2.AmazonLinuxImage;
+import software.amazon.awscdk.services.ec2.AmazonLinuxKernel;
+import software.amazon.awscdk.services.ec2.AmazonLinuxStorage;
 import software.amazon.awscdk.services.ec2.ILaunchTemplate;
+import software.amazon.awscdk.services.ec2.IMachineImage;
 import software.amazon.awscdk.services.ec2.ISecurityGroup;
 import software.amazon.awscdk.services.ec2.IVpc;
 import software.amazon.awscdk.services.ec2.InstanceClass;
@@ -28,7 +34,6 @@ import software.amazon.awscdk.services.ec2.SubnetSelection;
 import software.amazon.awscdk.services.ec2.UserData;
 import software.amazon.awscdk.services.ecs.AsgCapacityProvider;
 import software.amazon.awscdk.services.ecs.Cluster;
-import software.amazon.awscdk.services.ecs.EcsOptimizedImage;
 import software.amazon.awscdk.services.ecs.ICluster;
 import software.amazon.awscdk.services.iam.IManagedPolicy;
 import software.amazon.awscdk.services.iam.ManagedPolicy;
@@ -56,7 +61,7 @@ public class EcsNestedStack extends NestedStack {
 
     this.sg = createAsgSecurityGroup(ASG + "Sg", vpc);
     ILaunchTemplate lt = createLaunchTemplate(ASG + "Lt", launchTemplateUserData, vpc,
-        sg, props.getKeypairName());
+        sg, props.getKeypairName(), props.getClusterName());
     this.asg = createAsg(ASG, lt, vpc, props.getSelectedSubnets());
     this.asgCapacityProvider = createAsgCapacityProvider(ASG + "CapacityProvider");
     this.cluster = createCluster("Cluster", props.getClusterName(), vpc, asgCapacityProvider);
@@ -148,7 +153,7 @@ public class EcsNestedStack extends NestedStack {
   }
 
   private ILaunchTemplate createLaunchTemplate(String id, String userDataContent, IVpc vpc,
-      ISecurityGroup securityGroup, String keypairName) {
+      ISecurityGroup securityGroup, String keypairName, String clusterName) {
     List<IManagedPolicy> ec2ManagedPolicies = List.of(
         ManagedPolicy.fromAwsManagedPolicyName("AmazonSSMManagedInstanceCore"),
         ManagedPolicy.fromAwsManagedPolicyName("service-role/AmazonEC2ContainerServiceforEC2Role"));
@@ -157,10 +162,23 @@ public class EcsNestedStack extends NestedStack {
         .managedPolicies(ec2ManagedPolicies)
         .build();
     UserData userData = UserData.forLinux();
-    userData.addCommands(userDataContent);
-    userData.addCommands("echo ECS_ENABLE_CONTAINER_METADATA=true >> /etc/ecs/ecs.config");
+    userData.addCommands(
+        userDataContent,
+        "sudo yum update -y && sudo yum install bind-utils -y && sudo amazon-linux-extras disable docker",
+        "sudo usermod -a -G docker ec2-user && sudo usermod -a -G docker ssm-user",
+        "sudo mkdir -p /etc/ecs",
+        "sudo echo ECS_ENABLE_CONTAINER_METADATA=true >> /etc/ecs/ecs.config");
+    userData.addOnExitCommands(
+        "sudo amazon-linux-extras install -y ecs",
+        "sudo systemctl enable --now --no-block ecs");
+    IMachineImage machineImage = AmazonLinuxImage.Builder.create()
+        .edition(AmazonLinuxEdition.STANDARD)
+        .generation(AmazonLinuxGeneration.AMAZON_LINUX_2)
+        .kernel(AmazonLinuxKernel.KERNEL5_X)
+        .storage(AmazonLinuxStorage.EBS)
+        .build();
     return LaunchTemplate.Builder.create(this, id)
-        .machineImage(EcsOptimizedImage.amazonLinux2())
+        .machineImage(machineImage)
         .role(role)
         .securityGroup(securityGroup)
         .userData(userData)

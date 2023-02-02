@@ -13,6 +13,7 @@ import com.hoquangnam45.pharmacy.util.Numbers;
 
 import software.amazon.awscdk.App;
 import software.amazon.awscdk.Environment;
+import software.amazon.awscdk.services.ecs.NetworkMode;
 
 public class PharmacyApp {
   private final static String INFRA_STACK_ID = "InfraStack";
@@ -32,18 +33,24 @@ public class PharmacyApp {
         new EcsServiceDeploymentStack(app, System.getenv("STACK_ID"), EcsServiceDeploymentStackProps.builder()
             .env(environment)
             .containerName(System.getenv("CONTAINER_NAME"))
-            .portMappings(System.getenv("PORT_MAPPINGS"))
+            .containerPortMappings(System.getenv("CONTAINER_PORT_MAPPINGS"))
             .family(System.getenv("TASK_FAMILY"))
             .routeKey(System.getenv("ROUTE_KEY"))
-            .healthCheckCommand(System.getenv("HEALTH_CHECK_COMMAND"))
+            .containerHealthCheckCmd(System.getenv("CONTAINER_HEALTH_CHECK_CMD"))
             .registryCredentialSecret(System.getenv("REGISTRY_CREDENTIAL"))
             .environment(System.getenv("ENVIRONMENT"))
             .exportedEnvironments(System.getenv("EXPORTED_ENVIRONMENTS"))
+            .cloudMapPort(Numbers.toInteger(System.getenv("CLOUD_MAP_PORT"), null))
             .imageName(System.getenv("IMAGE_NAME"))
-            .memoryReservationMiB(Numbers.toInteger(System.getenv("MEMORY_RESERVATION_MIB"), 128))
+            .memoryReservationMiB(Numbers.toInteger(System.getenv("MEMORY_RESERVATION_MIB"), 64))
+            .memoryLimitMib(Numbers.toInteger(System.getenv("MEMORY_LIMIT_MIB"), null))
             .serviceName(System.getenv("SERVICE_NAME"))
-            .isPublic(Boolean.parseBoolean(System.getenv("IS_PUBLIC")))
-            .isBootstrap(Boolean.parseBoolean(System.getenv("IS_BOOTSTRAP")))
+            .useLoadBalancer(Boolean.parseBoolean(System.getenv("USE_LOAD_BALANCER")))
+            .lbPortMappings(System.getenv("LB_PORT_MAPPINGS"))
+            .networkMode(NetworkMode.valueOf(System.getenv("NETWORK_MODE").trim()))
+            .useEfs(Boolean.parseBoolean(System.getenv("USE_EFS")))
+            .efsVolumeMappings(System.getenv("EFS_VOLUME_MAPPINGS"))
+            .daemon(Boolean.parseBoolean(System.getenv("DAEMON")))
             .outputStack(INFRA_STACK_ID)
             .vpcName(VPC_NAME)
             .build());
